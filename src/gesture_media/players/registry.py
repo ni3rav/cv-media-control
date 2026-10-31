@@ -65,24 +65,68 @@ class _MissingPlayer:
         return None
 
 
-def _players_listed() -> bool:
+def _playerctl(argv: list[str]) -> subprocess.CompletedProcess[str] | None:
     try:
-        proc = subprocess.run(
-            ["playerctl", "-l"],
+        return subprocess.run(
+            argv,
             check=False,
             capture_output=True,
             text=True,
             timeout=COMMAND_TIMEOUT_S,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        log.info("playerctl -l failed (%s); auto will use mpv", exc)
-        return False
-    return any(line.strip() for line in proc.stdout.splitlines())
+        log.info("playerctl %s failed (%s)", argv, exc)
+        return None
+
+
+def _listed_players() -> list[str]:
+    proc = _playerctl(["playerctl", "-l"])
+    if proc is None or proc.returncode != 0:
+        return []
+    return [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+
+
+def _player_status(name: str) -> str:
+    proc = _playerctl(["playerctl", "-p", name, "status"])
+    if proc is None or proc.returncode != 0:
+        return ""
+    return proc.stdout.strip()
+
+
+def _players_listed() -> bool:
+    return bool(_listed_players())
+
+
+def best_mpris_player() -> str | None:
+    """Prefer a Playing player, then Paused, then Stopped.
+
+    Browsers stay in ``playerctl -l`` after the tab has stopped, and
+    play-pause then fails. A player that is actually playing wins.
+    """
+    ranked: list[tuple[int, str, str]] = []
+    for name in _listed_players():
+        status = _player_status(name)
+        rank = {"Playing": 0, "Paused": 1, "Stopped": 2}.get(status, 3)
+        ranked.append((rank, name, status or "unknown"))
+    if not ranked:
+        return None
+    ranked.sort()
+    _rank, name, status = ranked[0]
+    if status == "Stopped":
+        log.warning(
+            "%s is registered but nothing is playing. Start a song or video there, "
+            "or rerun with --player mpv --media FILE",
+            name,
+        )
+    else:
+        log.info("controlling %s (%s)", name, status)
+    return name
 
 
 def _build_mpris(config) -> MprisPlayer:
     command = tuple(getattr(config.player, "open_command", ()) or ("vlc",))
-    return MprisPlayer(getattr(config.player, "mpris_player", None), command)
+    explicit = getattr(config.player, "mpris_player", None)
+    return MprisPlayer(explicit or best_mpris_player(), command)
 
 
 def _build_mpv(config) -> MpvPlayer:

@@ -107,6 +107,10 @@ class GestureSpec:
     max_rate: float | None = None
     still_action: str | None = None
     still_ms: int | None = None
+    direction: float | None = None
+    alt_action: str | None = None
+    alt_max_rate: float | None = None
+    swipe: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -223,23 +227,13 @@ def default_config() -> AppConfig:
             smoothing_alpha=0.4,
         ),
         gestures={
-            "Open_Palm": GestureSpec("play_pause", hold_ms=500, cooldown_ms=1000),
-            "Closed_Fist": GestureSpec("mute", hold_ms=500, cooldown_ms=1000),
-            "Thumb_Up": GestureSpec("next", hold_ms=400, cooldown_ms=1000),
-            "Thumb_Down": GestureSpec("previous", hold_ms=400, cooldown_ms=1000),
-            "Pointing_Up": GestureSpec(
-                "volume",
-                max_rate=30.0,
-                still_action="open_player",
-                still_ms=1500,
-            ),
-            "Victory": GestureSpec("seek", max_rate=20.0),
-            "ILoveYou": GestureSpec(
-                "pitch",
-                max_rate=4.0,
-                still_action="pitch_reset",
-                still_ms=1500,
-            ),
+            "Closed_Fist": GestureSpec("play_pause", hold_ms=350, cooldown_ms=700),
+            "Open_Palm": GestureSpec("mute", hold_ms=350, cooldown_ms=700),
+            "Thumb_Up": GestureSpec("volume", max_rate=20.0, direction=1.0),
+            "Thumb_Down": GestureSpec("volume", max_rate=20.0, direction=-1.0),
+            "Thumb_Right": GestureSpec("next", hold_ms=280, cooldown_ms=700),
+            "Thumb_Left": GestureSpec("previous", hold_ms=280, cooldown_ms=700),
+            "Pointing_Up": GestureSpec("seek", max_rate=20.0),
         },
         player=PlayerConfig(
             backend="auto",
@@ -252,7 +246,7 @@ def default_config() -> AppConfig:
         pitch=PitchConfig(min_semitones=-12.0, max_semitones=12.0, step=0.5),
         hud=HudConfig(enabled=True, show_landmarks=False),
         tray=TrayConfig(enabled=True, release_camera_when_paused=False),
-        pause=PauseConfig(gesture="two_fists", hold_ms=2000, paused_fps=5),
+        pause=PauseConfig(gesture="two_fists", hold_ms=1400, paused_fps=5),
         notifications=NotificationsConfig(
             enabled=True,
             verbosity="all",
@@ -264,7 +258,7 @@ def default_config() -> AppConfig:
             on_start=True,
             on_toggle=True,
             on_error=True,
-            per_action={"volume": True, "seek": True, "pitch": True},
+            per_action={"volume": True, "seek": True},
         ),
     )
     _validate(config)
@@ -281,7 +275,7 @@ def load_config(
     """Load defaults, then YAML, profile, and CLI, in that order.
 
     ``path is None`` skips the YAML file. A missing explicit path is an error.
-    A missing profile warns and is skipped. ``cli.no_calibration`` skips it too.
+    A missing profile is skipped. ``cli.no_calibration`` skips it too.
     """
     config = default_config()
     if path is not None:
@@ -298,12 +292,11 @@ def load_config(
 
 
 def load_profile(path: Path) -> CalibrationProfile | None:
-    """Load a version-1 profile. Missing, corrupt, or old data warns and returns None."""
+    """Load a version-1 profile. A missing file returns None. Corrupt or old data warns."""
     path = Path(path)
     try:
         text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
-        warnings.warn(f"calibration profile not found: {path}", ConfigWarning, stacklevel=2)
         return None
     except OSError as exc:
         warnings.warn(
@@ -515,7 +508,18 @@ def _apply_gestures(
 ) -> dict[str, GestureSpec]:
     data = _mapping(raw, "gestures")
     merged = dict(current)
-    fields = {"action", "hold_ms", "cooldown_ms", "max_rate", "still_action", "still_ms"}
+    fields = {
+        "action",
+        "hold_ms",
+        "cooldown_ms",
+        "max_rate",
+        "still_action",
+        "still_ms",
+        "direction",
+        "alt_action",
+        "alt_max_rate",
+        "swipe",
+    }
     for name, spec_raw in data.items():
         if not isinstance(name, str) or not name:
             raise ConfigError("gesture names must be non-empty strings")
@@ -561,6 +565,30 @@ def _apply_gestures(
                 "still_ms",
                 None if base is None else base.still_ms,
                 f"gestures.{name}.still_ms",
+            ),
+            direction=_pick_optional_float(
+                spec_map,
+                "direction",
+                None if base is None else base.direction,
+                f"gestures.{name}.direction",
+            ),
+            alt_action=_pick_optional_str(
+                spec_map,
+                "alt_action",
+                None if base is None else base.alt_action,
+                f"gestures.{name}.alt_action",
+            ),
+            alt_max_rate=_pick_optional_float(
+                spec_map,
+                "alt_max_rate",
+                None if base is None else base.alt_max_rate,
+                f"gestures.{name}.alt_max_rate",
+            ),
+            swipe=_pick_optional_str(
+                spec_map,
+                "swipe",
+                None if base is None else base.swipe,
+                f"gestures.{name}.swipe",
             ),
         )
     return merged
@@ -821,6 +849,18 @@ def _validate_gesture(name: str, spec: GestureSpec) -> None:
         raise ConfigError(f"{label}.cooldown_ms must be positive")
     if spec.max_rate is not None and spec.max_rate <= 0:
         raise ConfigError(f"{label}.max_rate must be positive")
+    if spec.direction is not None and spec.direction not in (1.0, -1.0):
+        raise ConfigError(f"{label}.direction must be 1 or -1")
+    if spec.swipe is not None and spec.swipe != "horizontal":
+        raise ConfigError(f"{label}.swipe {spec.swipe!r} is not supported")
+    if spec.alt_action is None:
+        if spec.alt_max_rate is not None:
+            raise ConfigError(f"{label}.alt_max_rate requires alt_action")
+    else:
+        if spec.alt_action not in _CONTINUOUS_ACTIONS:
+            raise ConfigError(f"{label}.alt_action {spec.alt_action!r} is not supported")
+        if spec.alt_max_rate is None or spec.alt_max_rate <= 0:
+            raise ConfigError(f"{label}.alt_max_rate must be positive")
     if spec.still_action is None:
         if spec.still_ms is not None:
             raise ConfigError(f"{label}.still_ms requires still_action")

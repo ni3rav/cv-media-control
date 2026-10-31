@@ -47,14 +47,14 @@ Hold a gesture inside the arming zone until it fires. Palm up is a smaller image
 
 | Gesture | Action | Default timing |
 | --- | --- | --- |
-| Open palm | Play/pause | hold 500 ms |
-| Closed fist | Mute toggle | hold 500 ms |
-| Thumb up | Next track | hold 400 ms |
-| Thumb down | Previous track | hold 400 ms |
-| Pointing up | Volume. Up is louder, down is quieter. Hold still to open the player | deadzone 0.05, max 30%/s, still 1500 ms |
-| Victory | Seek. Right is forward, left is back | deadzone 0.05, max 20 s/s |
-| I love you | Pitch. Up is higher, down is lower. Hold still to reset pitch | deadzone 0.05, max 4 semitones/s, still 1500 ms |
-| Both fists | Pause or resume detection | hold 2000 ms |
+| Closed fist | Play/pause. Clench one hand | hold 350 ms |
+| Open palm, held still | Mute or unmute. Palm toward the camera | hold 350 ms |
+| Thumb pointing right | Next track | hold 280 ms |
+| Thumb pointing left | Previous track | hold 280 ms |
+| Thumb up | Volume up, and unmute if the sound is off. Louder while the thumb stays up | 20%/s |
+| Thumb down | Volume down while the thumb stays down | 20%/s |
+| One finger, slide right or left | Seek. Right is forward, left is back | deadzone 0.05, max 20 s/s |
+| Both fists | Pause or resume detection | hold 1400 ms |
 
 Keys in the preview: `q` or Esc quit, `d` toggle detection, `h` toggle the HUD, `l` toggle landmarks.
 
@@ -94,15 +94,9 @@ The profile is `~/.config/gesture-media/profile.yaml` (`$XDG_CONFIG_HOME` when t
 
 Config precedence, lowest to highest: built-in defaults, `config.yaml` next to the program, the calibration profile, then CLI flags.
 
-## Pitch, rubberband, and vinyl mode
-
-Pitch is an mpv feature. The scale is `2 ** (semitones / 12)`. The player sets the audio filter `@rb:rubberband=pitch-scale=1` and then `af-command set-pitch`, which changes pitch without resetting the graph. Playback speed stays 1, so tempo does not change.
-
-If `mpv --af=help` does not list rubberband, pitch falls back to vinyl mode: `speed` changes, so pitch and tempo move together, and the HUD shows vinyl mode. `doctor` reports the missing filter. MPRIS players do not get pitch; the HUD says pitch is unsupported on that backend, once per capability per backend.
-
 ## Camera and pause
 
-Two closed fists held for 2 seconds pause detection. Repeat to resume. While paused the camera stays open at `pause.paused_fps` (default 5) and only the two-fist toggle is evaluated. **The camera indicator light stays on while paused.** Set `tray.release_camera_when_paused: true` to release the device instead; resume then works only from the tray, because the gesture is no longer visible.
+Two closed fists held for 1.4 seconds pause detection. Repeat to resume. While paused the camera stays open at `pause.paused_fps` (default 5) and only the two-fist toggle is evaluated. **The camera indicator light stays on while paused.** Set `tray.release_camera_when_paused: true` to release the device instead; resume then works only from the tray, because the gesture is no longer visible.
 
 `--verbose` logs one debug line per frame. Frames are not written to disk. `record` writes landmarks and labels as JSONL and nothing else.
 
@@ -112,11 +106,11 @@ Volume defaults to the system sink (`wpctl`) for MPRIS and to the mpv player vol
 
 Some MPRIS players treat `previous` as "restart the current track" when playback is more than a few seconds in. That is the player's behavior; this app sends `playerctl previous`.
 
-`player.routing` can send one capability to a named backend, for example pitch to mpv and transport to mpris. An empty map keeps transport on the selected player and system volume on `wpctl`.
+`player.routing` can send one capability to a named backend. An empty map keeps transport on the selected player and system volume on `wpctl`.
 
 ## Notifications and tray
 
-Every action can post a silent, low-urgency notification (errors use normal urgency). Volume, seek, and pitch reuse one notification id and update it in place, throttled to `notifications.update_hz` (default 5 per second). Releasing the gesture sends one final value on that same id ("Volume set to 45%", "Seek total +14 s", "Pitch set to +2.5 semitones") unless the value never changed. `live_updates: false` keeps only the final. `final_value: false` keeps only the live updates. `verbosity: important` keeps app on/off, pause/resume, and errors. `off` sends nothing.
+Every action can post a silent, low-urgency notification (errors use normal urgency). Volume and seek reuse one notification id and update it in place, throttled to `notifications.update_hz` (default 5 per second). Releasing the gesture sends one final value on that same id ("Volume set to 45%", "Seek total +14 s") unless the value never changed. `live_updates: false` keeps only the final. `final_value: false` keeps only the live updates. `verbosity: important` keeps app on/off, pause/resume, and errors. `off` sends nothing.
 
 The tray menu can pause detection, show or hide the preview, start calibration, open the config file, switch notification verbosity, toggle live updates and the final value, and quit. If the tray host is missing the app logs that and keeps running.
 

@@ -55,17 +55,23 @@ def test_defaults_match_the_example_file() -> None:
     assert cfg.engine.deadzone == pytest.approx(0.05)
     assert cfg.engine.max_disp == pytest.approx(0.25)
     assert cfg.engine.smoothing_alpha == pytest.approx(0.4)
-    assert cfg.gestures["Open_Palm"].action == "play_pause"
-    assert cfg.gestures["Open_Palm"].hold_ms == 500
-    assert cfg.gestures["Closed_Fist"].cooldown_ms == 1000
-    assert cfg.gestures["Thumb_Up"].hold_ms == 400
-    assert cfg.gestures["Thumb_Down"].action == "previous"
-    assert cfg.gestures["Pointing_Up"].max_rate == pytest.approx(30)
-    assert cfg.gestures["Pointing_Up"].still_action == "open_player"
-    assert cfg.gestures["Pointing_Up"].still_ms == 1500
-    assert cfg.gestures["Victory"].max_rate == pytest.approx(20)
-    assert cfg.gestures["ILoveYou"].still_action == "pitch_reset"
-    assert cfg.gestures["ILoveYou"].max_rate == pytest.approx(4)
+    assert cfg.gestures["Closed_Fist"].action == "play_pause"
+    assert cfg.gestures["Closed_Fist"].hold_ms == 350
+    assert cfg.gestures["Open_Palm"].action == "mute"
+    assert cfg.gestures["Open_Palm"].cooldown_ms == 700
+    assert cfg.gestures["Open_Palm"].swipe is None
+    assert cfg.gestures["Thumb_Up"].direction == pytest.approx(1)
+    assert cfg.gestures["Thumb_Up"].max_rate == pytest.approx(20)
+    assert cfg.gestures["Thumb_Down"].direction == pytest.approx(-1)
+    assert cfg.gestures["Thumb_Right"].action == "next"
+    assert cfg.gestures["Thumb_Right"].hold_ms == 280
+    assert cfg.gestures["Thumb_Left"].action == "previous"
+    assert cfg.gestures["Pointing_Up"].action == "seek"
+    assert cfg.gestures["Pointing_Up"].max_rate == pytest.approx(20)
+    assert cfg.gestures["Pointing_Up"].alt_action is None
+    assert cfg.gestures["Pointing_Up"].still_action is None
+    assert "Victory" not in cfg.gestures
+    assert "ILoveYou" not in cfg.gestures
     assert cfg.player.backend == "auto"
     assert cfg.player.mpris_player is None
     assert cfg.player.open_command == ("vlc",)
@@ -81,7 +87,7 @@ def test_defaults_match_the_example_file() -> None:
     assert cfg.tray.enabled is True
     assert cfg.tray.release_camera_when_paused is False
     assert cfg.pause.gesture == "two_fists"
-    assert cfg.pause.hold_ms == 2000
+    assert cfg.pause.hold_ms == 1400
     assert cfg.pause.paused_fps == 5
     assert cfg.notifications.verbosity == "all"
     assert cfg.notifications.update_hz == 5
@@ -119,9 +125,10 @@ audio:
     )
     cfg = load_config(path, use_profile=False)
     assert cfg.gestures["Open_Palm"].hold_ms == 800
-    assert cfg.gestures["Open_Palm"].action == "play_pause"
-    assert cfg.gestures["Open_Palm"].cooldown_ms == 1000
-    assert cfg.gestures["Thumb_Up"].hold_ms == 400
+    assert cfg.gestures["Open_Palm"].action == "mute"
+    assert cfg.gestures["Open_Palm"].cooldown_ms == 700
+    assert cfg.gestures["Open_Palm"].swipe is None
+    assert cfg.gestures["Thumb_Up"].max_rate == pytest.approx(20)
     assert cfg.vision.min_score == pytest.approx(0.7)
     assert cfg.vision.hand == "left"
     assert cfg.player.backend == "mpris"
@@ -244,8 +251,10 @@ zone: {x_min: 0.12, x_max: 0.9, y_min: 0.11, y_max: 0.88}
 
 def test_profiles_missing_corrupt_old_and_roundtrip(tmp_path: Path) -> None:
     missing = tmp_path / "nope.yaml"
-    with pytest.warns(ConfigWarning, match="not found"):
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
         assert load_profile(missing) is None
+    assert caught == []
 
     corrupt = _write(tmp_path, ":\n  - [", name="bad.yaml")
     with pytest.warns(ConfigWarning):
@@ -309,8 +318,7 @@ def test_profile_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     assert runtime_dir() == Path("/run/user/1000")
     monkeypatch.delenv("XDG_RUNTIME_DIR")
     assert runtime_dir() == Path.home() / ".cache" / "gesture-media"
-    with pytest.warns(ConfigWarning):
-        cfg = load_config(use_profile=True)
+    cfg = load_config(use_profile=True)
     assert cfg.calibration_active is False
 
 

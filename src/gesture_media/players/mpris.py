@@ -60,6 +60,7 @@ class MprisPlayer:
         self.player_name = player_name or None
         self.open_command = tuple(open_command)
         self._warned: set[Capability] = set()
+        self._no_media_warned = False
 
     def _argv(self, *args: str) -> list[str]:
         argv = ["playerctl"]
@@ -79,7 +80,19 @@ class MprisPlayer:
         proc = _run(argv)
         if proc is not None and proc.returncode != 0:
             detail = (proc.stderr or proc.stdout or "").strip()
-            log.warning("playerctl %s exited %s (%s)", list(argv), proc.returncode, detail)
+            if "No player could handle this command" in detail:
+                if not self._no_media_warned:
+                    self._no_media_warned = True
+                    where = f" in {self.player_name}" if self.player_name else ""
+                    log.warning(
+                        "Nothing is playing%s. Start a song or video, or rerun with "
+                        "--player mpv --media FILE",
+                        where,
+                    )
+            else:
+                log.warning(
+                    "playerctl %s exited %s (%s)", list(argv), proc.returncode, detail
+                )
         return proc
 
     def is_available(self) -> bool:

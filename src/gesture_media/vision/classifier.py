@@ -5,9 +5,14 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
-import mediapipe as mp
+os.environ.setdefault("GLOG_minloglevel", "2")
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
+os.environ.setdefault("ABSL_MIN_LOG_LEVEL", "2")
+
+import mediapipe as mp  # noqa: E402
 import numpy as np
 
 from gesture_media.vision.types import LANDMARK_COUNT, Landmark, Observation

@@ -106,6 +106,19 @@ def test_options_pitch_and_playlist(monkeypatch):
     assert core.terminated is True
 
 
+def test_volume_up_clears_mute_and_string_no_is_not_muted(monkeypatch):
+    _install_fake(monkeypatch)
+    monkeypatch.setattr("gesture_media.players.mpv.rubberband_available", lambda: True)
+    player = MpvPlayer(())
+    core = _FakeMpv.latest
+    core.mute = "no"
+    assert player.get_state() == (30.0, False)
+    player.toggle_mute()
+    assert core.mute is True
+    player.volume_delta(1)
+    assert core.mute is False
+
+
 def test_vinyl_mode_changes_speed(monkeypatch):
     _install_fake(monkeypatch)
     monkeypatch.setattr("gesture_media.players.mpv.rubberband_available", lambda: False)

@@ -12,6 +12,14 @@ log = logging.getLogger(__name__)
 
 HELP_TIMEOUT_S = 2.0
 _RUBBERBAND_AF = "@rb:rubberband=pitch-scale=1"
+_MUTED_WORDS = frozenset({"1", "true", "yes", "on"})
+
+
+def _muted_flag(value: object) -> bool:
+    """mpv's mute flag. The string ``no`` is not muted."""
+    if isinstance(value, str):
+        return value.strip().lower() in _MUTED_WORDS
+    return bool(value)
 
 
 class Unsupported(RuntimeError):
@@ -203,6 +211,9 @@ class MpvPlayer:
 
     def volume_delta(self, percent: float) -> None:
         def apply() -> None:
+            # Raising the volume while muted used to leave the player silent.
+            if float(percent) > 0 and _muted_flag(self._player.mute):
+                self._player.mute = False
             current = float(self._player.volume or 0.0)
             self._player.volume = max(0.0, min(100.0, current + float(percent)))
 
@@ -210,7 +221,10 @@ class MpvPlayer:
 
     def toggle_mute(self) -> None:
         def apply() -> None:
-            self._player.mute = not bool(self._player.mute)
+            before = _muted_flag(self._player.mute)
+            self._player.mute = not before
+            if _muted_flag(self._player.mute) == before:
+                self._player.cycle("mute")
 
         self._guard("mute", apply)
 
@@ -219,7 +233,7 @@ class MpvPlayer:
             return (0.0, False)
         try:
             volume = float(self._player.volume or 0.0)
-            muted = bool(self._player.mute)
+            muted = _muted_flag(self._player.mute)
         except Exception as exc:
             log.warning("mpv volume state failed: %s", exc)
             return (0.0, False)

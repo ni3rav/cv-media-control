@@ -39,6 +39,29 @@ def parse_wpctl_volume(text: str) -> tuple[float, bool]:
     return percent, _MUTED_RE.search(text) is not None
 
 
+def playback_stream_ids(text: str) -> list[str]:
+    """Playback stream node ids from ``wpctl status``.
+
+    Link lines contain ``>`` and are ports, not streams. Sources are outside
+    this section, so the microphone is left alone.
+    """
+    ids: list[str] = []
+    capturing = False
+    for line in text.splitlines():
+        if not capturing:
+            if "Streams:" in line:
+                capturing = True
+            continue
+        if line.startswith(("Video", "Settings")):
+            break
+        if ">" in line:
+            continue
+        match = re.search(r"(\d+)\.\s+\S", line)
+        if match:
+            ids.append(match.group(1))
+    return ids
+
+
 def _run(argv: Sequence[str]) -> subprocess.CompletedProcess[str] | None:
     try:
         completed = subprocess.run(
@@ -60,7 +83,18 @@ def _run(argv: Sequence[str]) -> subprocess.CompletedProcess[str] | None:
 class WpctlAudio:
     """``@DEFAULT_AUDIO_SINK@`` volume and mute. The limiter is ``-l 1.0``."""
 
+    def __init__(self) -> None:
+        # The first volume-up checks mute. After that, only a mute we applied
+        # makes the next volume-up look again.
+        self._check_mute_on_volume_up = True
+
     def volume_delta(self, percent: float) -> None:
+        if percent > 0 and self._check_mute_on_volume_up:
+            muted = self._read_muted()
+            if muted is True:
+                self._set_muted(False)
+            elif muted is False:
+                self._check_mute_on_volume_up = False
         _run(
             [
                 "wpctl",
@@ -73,7 +107,63 @@ class WpctlAudio:
         )
 
     def toggle_mute(self) -> None:
-        _run(["wpctl", "set-mute", _SINK, "toggle"])
+        """Mute the sink, or unmute the sink and any muted playback stream.
+
+        ``toggle`` on the sink alone leaves a browser stream muted, so the
+        music stays silent. A failed volume read falls back to ``toggle``.
+        """
+        muted = self._read_muted()
+        if muted is None:
+            _run(["wpctl", "set-mute", _SINK, "toggle"])
+            self._check_mute_on_volume_up = True
+            return
+        if muted:
+            self._set_muted(False)
+            return
+        streams = self._muted_stream_ids()
+        if streams:
+            for stream_id in streams:
+                _run(["wpctl", "set-mute", stream_id, "0"])
+            self._check_mute_on_volume_up = False
+            return
+        self._set_muted(True)
+
+    def _read_muted(self) -> bool | None:
+        proc = _run(["wpctl", "get-volume", _SINK])
+        if proc is None or proc.returncode != 0:
+            return None
+        try:
+            _percent, muted = parse_wpctl_volume(proc.stdout)
+        except ValueError:
+            return None
+        return muted
+
+    def _stream_ids(self) -> list[str]:
+        proc = _run(["wpctl", "status"])
+        if proc is None or proc.returncode != 0:
+            return []
+        return playback_stream_ids(proc.stdout)
+
+    def _muted_stream_ids(self) -> list[str]:
+        muted: list[str] = []
+        for stream_id in self._stream_ids():
+            proc = _run(["wpctl", "get-volume", stream_id])
+            if proc is None or proc.returncode != 0:
+                continue
+            try:
+                _percent, stream_muted = parse_wpctl_volume(proc.stdout)
+            except ValueError:
+                continue
+            if stream_muted:
+                muted.append(stream_id)
+        return muted
+
+    def _set_muted(self, muted: bool) -> None:
+        _run(["wpctl", "set-mute", _SINK, "1" if muted else "0"])
+        if not muted:
+            for stream_id in self._stream_ids():
+                _run(["wpctl", "set-mute", stream_id, "0"])
+        self._check_mute_on_volume_up = muted
 
     def get_state(self) -> tuple[float, bool]:
         proc = _run(["wpctl", "get-volume", _SINK])

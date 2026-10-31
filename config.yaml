@@ -25,24 +25,19 @@ engine:
   smoothing_alpha: 0.4
 
 gestures:
-  Open_Palm:   {action: play_pause, hold_ms: 500, cooldown_ms: 1000}
-  Closed_Fist: {action: mute, hold_ms: 500, cooldown_ms: 1000}
-  Thumb_Up:    {action: next, hold_ms: 400, cooldown_ms: 1000}
-  Thumb_Down:  {action: previous, hold_ms: 400, cooldown_ms: 1000}
-  Pointing_Up: {action: volume, max_rate: 30, still_action: open_player, still_ms: 1500}
-  Victory:     {action: seek, max_rate: 20}
-  ILoveYou:    {action: pitch, max_rate: 4, still_action: pitch_reset, still_ms: 1500}
+  Closed_Fist: {action: play_pause, hold_ms: 350, cooldown_ms: 700}
+  Open_Palm:   {action: mute, hold_ms: 350, cooldown_ms: 700}
+  Thumb_Up:    {action: volume, max_rate: 20, direction: 1}
+  Thumb_Down:  {action: volume, max_rate: 20, direction: -1}
+  Thumb_Right: {action: next, hold_ms: 280, cooldown_ms: 700}
+  Thumb_Left:  {action: previous, hold_ms: 280, cooldown_ms: 700}
+  Pointing_Up: {action: seek, max_rate: 20}
 
 player:
   backend: auto           # auto | mpv | mpris
   mpris_player: null
   open_command: [vlc]
   media: []
-
-pitch:
-  min_semitones: -12
-  max_semitones: 12
-  step: 0.5
 
 hud:
   enabled: true
@@ -54,7 +49,7 @@ tray:
 
 pause:
   gesture: two_fists      # both hands Closed_Fist
-  hold_ms: 2000
+  hold_ms: 1400
   paused_fps: 5
 
 notifications:
@@ -71,4 +66,3 @@ notifications:
   per_action:
     volume: true
     seek: true
-    pitch: true

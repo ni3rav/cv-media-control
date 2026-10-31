@@ -53,7 +53,6 @@ def _status_lines(model: HudModel) -> list[str]:
         f"fps: {model.fps:.1f}",
         f"volume: {_volume_text(model.volume)}",
         f"mute: {_mute_text(model.muted)}",
-        f"pitch: {model.pitch_semitones:+.1f} st",
         f"backend: {model.backend}",
     ]
     lines.extend(model.notices)

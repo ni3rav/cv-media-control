@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gesture Media Controller, a lesson</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Azeret+Mono:wght@420&family=Literata:opsz,wght@7..72,460;7..72,650&family=Sora:wght@420;560&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ink: #1b2836;
+      --muted: #4d5d6d;
+      --table: #e4ebf1;
+      --glass: #15202b;
+      --bezel: #243140;
+      --zone: #d6e4ec;
+      --skin: #f0c2a0;
+      --live: #1f8f45;
+      --hold: #a97612;
+      --miss: #9d2c24;
+      --line: #c5d1da;
+      --measure: 66ch;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      background: var(--table);
+      color: var(--ink);
+      font-family: Literata, Georgia, serif;
+      font-optical-sizing: auto;
+      font-weight: 460;
+      font-size: 1.125rem;
+      line-height: 1.6;
+    }
+
+    a { color: inherit; }
+    a:hover { color: var(--live); }
+
+    :focus-visible {
+      outline: 2px solid var(--live);
+      outline-offset: 3px;
+    }
+
+    .shell {
+      display: grid;
+      grid-template-columns: minmax(240px, 400px) minmax(0, var(--measure));
+      gap: 2.5rem 4rem;
+      align-items: start;
+      justify-content: center;
+      padding: 1.25rem 6vw 4rem;
+    }
+
+    .stage { position: sticky; top: 1.25rem; }
+
+    .top {
+      margin: 0 0 0.75rem;
+      font-family: Sora, sans-serif;
+      font-size: 0.95rem;
+      font-weight: 560;
+    }
+
+    .copy h1 {
+      font-family: Sora, sans-serif;
+      font-weight: 560;
+      font-size: clamp(2.4rem, 5vw, 3.6rem);
+      line-height: 1.05;
+      letter-spacing: -0.03em;
+      margin: 0 0 1rem;
+    }
+
+    .lede { margin: 0 0 1.25rem; font-size: 1.25rem; line-height: 1.45; }
+
+    .copy { min-width: 0; }
+
+    code {
+      font-family: "Azeret Mono", ui-monospace, monospace;
+      font-size: 0.84em;
+    }
+
+    .contents {
+      margin: 0 0 3rem;
+      padding: 0;
+    }
+
+    .contents ol {
+      margin: 0;
+      padding-left: 1.25rem;
+    }
+
+    .contents a { text-decoration-thickness: 1px; text-underline-offset: 0.18em; }
+
+    h2 {
+      font-family: Sora, sans-serif;
+      font-weight: 560;
+      font-size: 1.7rem;
+      letter-spacing: -0.03em;
+      line-height: 1.2;
+      margin: 2.75rem 0 0.75rem;
+    }
+
+    p { margin: 0 0 1rem; }
+
+    .command {
+      font-family: "Azeret Mono", ui-monospace, monospace;
+      font-size: 0.86rem;
+      line-height: 1.55;
+      background: var(--bezel);
+      color: #f4f7f8;
+      padding: 0.9rem 1rem;
+      margin: 0 0 1rem;
+      overflow-x: auto;
+      white-space: pre;
+    }
+
+    .note {
+      border-left: 3px solid var(--hold);
+      padding-left: 0.9rem;
+      color: var(--ink);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0 0 1.25rem;
+      font-size: 1.02rem;
+    }
+
+    th, td {
+      text-align: left;
+      vertical-align: top;
+      padding: 0.55rem 0.6rem 0.55rem 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    th {
+      font-family: Sora, sans-serif;
+      font-weight: 560;
+      font-size: 0.95rem;
+    }
+
+    .finder { margin: 0; }
+
+    .bezel {
+      background: var(--bezel);
+      padding: 0.7rem 0.7rem 0.85rem;
+      color: #e7eef2;
+    }
+
+    .bezel svg { display: block; width: 100%; height: auto; }
+
+    .bezel figcaption {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      align-items: baseline;
+      font-family: Sora, sans-serif;
+      font-size: 0.92rem;
+      padding: 0.55rem 0.15rem 0;
+    }
+
+    .bezel figcaption b { font-weight: 560; }
+
+    .live-dot {
+      display: inline-block;
+      width: 0.55rem;
+      height: 0.55rem;
+      margin-right: 0.35rem;
+      border-radius: 50%;
+      background: var(--live);
+      vertical-align: 0.05em;
+    }
+
+    .zone {
+      fill: none;
+      stroke: var(--zone);
+      stroke-width: 3;
+      stroke-dasharray: 1700;
+      stroke-dashoffset: 1700;
+      animation: draw-zone 1.1s ease forwards 0.15s;
+    }
+
+    @keyframes draw-zone { to { stroke-dashoffset: 0; } }
+
+    .poses { margin: 1rem 0 1.5rem; }
+
+    .pose-list { display: flex; flex-direction: column; gap: 0.25rem; }
+
+    .pose-list button {
+      font: inherit;
+      text-align: left;
+      color: var(--ink);
+      background: transparent;
+      border: 0;
+      border-left: 3px solid transparent;
+      padding: 0.45rem 0.7rem;
+      cursor: pointer;
+    }
+
+    .pose-list button[aria-pressed="true"] { border-left-color: var(--live); }
+
+    .pose-list button span {
+      display: block;
+      color: var(--muted);
+      font-size: 0.98rem;
+    }
+
+    .fail { color: var(--miss); }
+
+    footer {
+      margin: 2rem 0 0;
+      color: var(--muted);
+      font-size: 1rem;
+    }
+
+    @media (max-width: 800px) {
+      .shell { grid-template-columns: 1fr; padding: 1rem 1.25rem 3rem; }
+      .stage { position: static; }
+      .bezel figcaption { flex-direction: column; align-items: flex-start; gap: 0.2rem; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .zone { animation: none; stroke-dashoffset: 0; }
+    }
+  </style>
+</head>
+<body>
+  <svg xmlns="http://www.w3.org/2000/svg" hidden>
+    <symbol id="pose-palm" viewBox="0 0 200 240">
+      <g fill="#f0c2a0">
+        <rect x="46" y="36" width="22" height="78" rx="11"/>
+        <rect x="74" y="16" width="24" height="100" rx="12"/>
+        <rect x="104" y="24" width="22" height="90" rx="11"/>
+        <rect x="132" y="42" width="20" height="68" rx="10"/>
+        <ellipse cx="112" cy="156" rx="58" ry="58"/>
+        <ellipse cx="52" cy="132" rx="18" ry="30" transform="rotate(-42 52 132)"/>
+      </g>
+    </symbol>
+    <symbol id="pose-fist" viewBox="0 0 200 240">
+      <g fill="#f0c2a0">
+        <ellipse cx="104" cy="132" rx="62" ry="54"/>
+        <rect x="58" y="78" width="92" height="28" rx="14"/>
+        <ellipse cx="58" cy="118" rx="22" ry="16" transform="rotate(-20 58 118)"/>
+      </g>
+    </symbol>
+    <symbol id="pose-up" viewBox="0 0 200 240">
+      <g fill="#f0c2a0">
+        <ellipse cx="116" cy="150" rx="52" ry="48"/>
+        <rect x="78" y="104" width="70" height="26" rx="13"/>
+        <rect x="58" y="28" width="26" height="96" rx="13"/>
+      </g>
+    </symbol>
+    <symbol id="pose-down" viewBox="0 0 200 240">
+      <g fill="#f0c2a0">
+        <ellipse cx="116" cy="96" rx="52" ry="48"/>
+        <rect x="78" y="118" width="70" height="26" rx="13"/>
+        <rect x="58" y="122" width="26" height="96" rx="13"/>
+      </g>
+    </symbol>
+    <symbol id="pose-point" viewBox="0 0 200 240">
+      <g fill="#f0c2a0">
+        <ellipse cx="112" cy="162" rx="54" ry="50"/>
+        <rect x="92" y="18" width="26" height="112" rx="13"/>
+        <ellipse cx="70" cy="150" rx="16" ry="22"/>
+      </g>
+    </symbol>
+    <symbol id="pose-victory" viewBox="0 0 200 240">
+      <g fill="#f0c2a0">
+        <ellipse cx="108" cy="168" rx="54" ry="48"/>
+        <rect x="78" y="22" width="22" height="112" rx="11" transform="rotate(-12 89 78)"/>
+        <rect x="108" y="22" width="22" height="112" rx="11" transform="rotate(12 119 78)"/>
+      </g>
+    </symbol>
+    <symbol id="pose-love" viewBox="0 0 200 240">
+      <g fill="#f0c2a0">
+        <ellipse cx="108" cy="164" rx="56" ry="50"/>
+        <rect x="78" y="28" width="22" height="104" rx="11"/>
+        <rect x="128" y="48" width="18" height="78" rx="9"/>
+        <ellipse cx="48" cy="128" rx="16" ry="28" transform="rotate(-50 48 128)"/>
+      </g>
+    </symbol>
+    <symbol id="pose-two" viewBox="0 0 200 240">
+      <g fill="#f0c2a0">
+        <ellipse cx="62" cy="132" rx="40" ry="34"/>
+        <rect x="32" y="96" width="60" height="18" rx="9"/>
+        <ellipse cx="140" cy="132" rx="40" ry="34"/>
+        <rect x="110" y="96" width="60" height="18" rx="9"/>
+      </g>
+    </symbol>
+  </svg>
+
+  <div class="shell">
+  <div class="stage">
+    <p class="top">Gesture Media Controller</p>
+    <figure class="finder">
+      <div class="bezel">
+        <svg viewBox="0 0 640 480" role="img" aria-label="A mirrored camera frame. A closed fist sits inside the arming rectangle.">
+          <rect width="640" height="480" fill="#15202b"/>
+          <rect class="zone" x="96" y="48" width="448" height="384"/>
+            <use id="pose-hand" href="#pose-fist" x="220" y="120" width="200" height="240"/>
+          <text id="hud-title" x="112" y="78" fill="#e7eef2" font-family="Sora, sans-serif" font-size="20">Closed fist</text>
+          <text id="hud-hint" x="112" y="104" fill="#b7c6d1" font-family="Sora, sans-serif" font-size="16">Hold for a third of a second</text>
+        </svg>
+        <figcaption>
+          <span><i class="live-dot" aria-hidden="true"></i><b id="pose-caption">Closed fist</b></span>
+          <span id="pose-effect">Play or pause</span>
+        </figcaption>
+      </div>
+    </figure>
+  </div>
+  <div class="copy">
+      <h1>Your hand is the remote.</h1>
+      <p class="lede">Sit at the laptop, start the music, and clench a fist in front of the webcam until the track pauses. Everything after that is the same idea with a different pose.</p>
+      <p>Recognition runs on this computer. Nothing about the picture leaves the machine. You get a preview window, a tray icon, and quiet notifications.</p>
+
+  <main>
+    <nav class="contents" aria-label="Lesson">
+      <ol>
+        <li><a href="#setup">Set up once</a></li>
+        <li><a href="#doctor">Check the laptop</a></li>
+        <li><a href="#music">Start the music</a></li>
+        <li><a href="#run">Open the preview</a></li>
+        <li><a href="#first">Pause a track with a closed fist</a></li>
+        <li><a href="#poses">Learn the other poses</a></li>
+        <li><a href="#keys">Use the preview and the tray</a></li>
+        <li><a href="#pause">Rest your hands</a></li>
+        <li><a href="#calibrate">Tune it to your seat</a></li>
+        <li><a href="#record">Record a session and play it back</a></li>
+        <li><a href="#trouble">Fix what you see</a></li>
+      </ol>
+    </nav>
+
+    <h2 id="setup">Set up once</h2>
+    <p>Work in the project folder. If <code>.venv</code> is already there, skip to the check.</p>
+    <pre class="command">cd ~/code/cv-music-control
+uv python install 3.12
+uv venv --python 3.12 .venv
+uv pip install -e ".[dev]"
+.venv/bin/python scripts/fetch_model.py</pre>
+    <p>The model file lands in <code>models/</code> and is not committed. MediaPipe brings its own OpenCV. Do not install <code>opencv-python</code> beside it.</p>
+    <p>On Fedora the system packages are <code>playerctl</code>, <code>mpv-libs</code>, <code>wireplumber</code>, and <code>mpv</code>. Debian and Ubuntu use <code>playerctl</code>, <code>wireplumber</code>, <code>mpv</code>, and <code>libmpv2</code>. <code>playerctl</code> talks to VLC, Spotify, and browsers. <code>mpv-libs</code> is the built-in player.</p>
+
+    <h2 id="doctor">Check the laptop</h2>
+    <pre class="command">source .venv/bin/activate
+gesture-media doctor</pre>
+    <p>Read the lines. The command exits 0 when every line marked hard has passed. A warning is information, not a failure.</p>
+    <table>
+      <thead>
+        <tr><th>What you see</th><th>What to do</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Camera passed</td><td>The webcam opened and was released.</td></tr>
+        <tr><td>Model and MediaPipe passed</td><td>Recognition can run.</td></tr>
+        <tr><td>playerctl, wpctl, and libmpv passed</td><td>You can drive an open player and the built-in one.</td></tr>
+        <tr><td>No active MPRIS players</td><td>Nothing is playing yet. Start VLC, Spotify, or a browser video, or use the built-in player in the next step.</td></tr>
+        <tr><td>No calibration profile</td><td>Leave it. The defaults work. Calibration is a later, optional step.</td></tr>
+      </tbody>
+    </table>
+    <p>If the camera you want is not index 0, list the ones that open:</p>
+    <pre class="command">gesture-media list-cameras</pre>
+
+    <h2 id="music">Start the music</h2>
+    <p>You have two paths. Pick one before you raise your hand.</p>
+    <p>Control something that is already playing. Open VLC, Spotify, or a browser tab with sound. Confirm the name shows up:</p>
+    <pre class="command">playerctl -l</pre>
+    <p>Or let the app play files itself. Pitch control only exists on this path. Pass one or more files:</p>
+    <pre class="command">gesture-media run --player mpv --media song.mp3</pre>
+    <p>If you omit <code>--player</code>, the app looks for an MPRIS player and uses it. With none running, it falls through to mpv. <code>--player mpris</code> and <code>--player mpv</code> force the choice.</p>
+    <p>Volume follows the system output for VLC, Spotify, and the browser. It follows the mpv volume when mpv is the player. That split is intentional. Change it in <code>config.yaml</code> with <code>audio.volume_target</code> set to <code>system</code> or <code>player</code>.</p>
+
+    <h2 id="run">Open the preview</h2>
+    <pre class="command">gesture-media run</pre>
+    <p>A window titled Gesture Media Controller opens. A rectangle marks the area where your hand counts. Keep the palm inside it. The picture is mirrored: the hand on your right appears on the right side of the window.</p>
+    <p>The first launch with no saved profile prints one line about calibration. You can ignore it.</p>
+    <p>A second launch tells you the app is already running and exits. Quit with <code>q</code>, Esc, Ctrl+C, or the tray Quit item. Quitting releases the camera and closes the built-in player.</p>
+    <p>If the window never appears on Wayland, start it through XWayland:</p>
+    <pre class="command">QT_QPA_PLATFORM=xcb gesture-media run</pre>
+    <p>Hide the window and keep control from the tray:</p>
+    <pre class="command">gesture-media run --no-preview</pre>
+
+    <h2 id="first">Pause a track with a closed fist</h2>
+    <p>Face the camera. Clench one fist and hold it still inside the rectangle. Count about a third of a second. The track toggles between play and pause, a line appears in the terminal, and a notification names the pose.</p>
+    <p>Drop the hand. The same pose will not fire again until you have let go and a short cooldown has passed. That pause is there so a pose you are still holding does not retrigger.</p>
+    <p>If nothing happens, look at the overlay. It names the pose it thinks it sees, the score, and a hold bar. A score under 0.6 is ignored. A hand outside the rectangle is ignored. Better light on the hand usually fixes a low score.</p>
+
+    <h2 id="poses">Learn the other poses</h2>
+    <p>Discrete poses fire once after you hold them. Volume and seek work like a joystick: the pose locks in, then you move from the spot where your palm started. A small motion inside the deadzone does nothing. Up means toward the top of the frame.</p>
+    <div class="pose-list" role="list">
+        <button type="button" data-pose="fist" aria-pressed="true">Closed fist<span>Play or pause. Clench one hand and hold about a third of a second.</span></button>
+        <button type="button" data-pose="palm" aria-pressed="false">Open palm<span>Hold still to mute or unmute.</span></button>
+        <button type="button" data-pose="up" aria-pressed="false">Thumb up<span>Volume up. Keep the thumb up and it keeps getting louder. This also unmutes. Point the same thumb to your right for the next track.</span></button>
+        <button type="button" data-pose="down" aria-pressed="false">Thumb down<span>Volume down. Keep the thumb down and it keeps getting quieter. Point the same thumb to your left for the previous track.</span></button>
+        <button type="button" data-pose="point" aria-pressed="false">One finger<span>Slide right to seek forward, left to seek back.</span></button>
+        <button type="button" data-pose="two" aria-pressed="false">Both fists<span>Pause or resume detection. Hold about a second and a half. While both hands are up, other poses are ignored.</span></button>
+    </div>
+    <p class="note">Some players treat previous as “start this track again” once you are a few seconds in. The app sends the ordinary previous command. The player decides what that means.</p>
+    <p>Point the thumb to your right and hold it to skip ahead. Point it to your left and hold it to go back. Drop the hand and show the palm again to unmute. Thumb up also turns the sound back on if a mute left it silent.</p>
+
+    <h2 id="keys">Use the preview and the tray</h2>
+    <table>
+      <thead>
+        <tr><th>Key</th><th>What happens</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>q or Esc</td><td>Quit and release the camera.</td></tr>
+        <tr><td>d</td><td>Turn detection on or off.</td></tr>
+        <tr><td>h</td><td>Hide or show the overlay.</td></tr>
+        <tr><td>l</td><td>Draw the hand landmarks.</td></tr>
+      </tbody>
+    </table>
+    <p>The overlay shows the pose, its score, hold progress, the last action, frames per second, volume, mute, and which backend is active. After a calibration profile loads, it also says the profile is active.</p>
+    <p>The tray icon is green while detection is on, amber while it is paused, and red if the camera is lost. Open it for pause, show or hide the preview, calibrate, open <code>config.yaml</code>, notification settings, and quit.</p>
+    <p>Every action can post a silent notification. Volume and seek update one popup while you hold the pose, then show the resulting value when you let go. If your hand never left the deadzone, there is no final popup. From the tray you can limit this to start, stop, pause, and errors, or turn it off.</p>
+
+    <h2 id="pause">Rest your hands</h2>
+    <p>Hold both fists up for about a second and a half. Detection pauses, the icon turns amber, and a notification says so. Repeat the pose to resume.</p>
+    <p>The camera stays open at a slower rate, and its light stays on. Only the two-fist pose is watched. To drop the camera instead, set this and then resume from the tray, because the hands are no longer visible:</p>
+    <pre class="command">tray:
+  release_camera_when_paused: true</pre>
+
+    <h2 id="calibrate">Tune it to your seat</h2>
+    <p>Skip this until the defaults feel wrong for your distance or lighting. It takes about a minute and never runs unless you ask.</p>
+    <pre class="command">gesture-media calibrate
+gesture-media calibrate --skip-gestures
+gesture-media calibrate --reset</pre>
+    <p>The window asks you to hold a relaxed hand still, then move to a comfortable top, bottom, left, and right. Unless you skipped them, it then asks for each of the five poses. Esc throws the session away and writes nothing.</p>
+    <p>At the end it prints the old and new deadzone, reach, and arming zone, and asks whether to save. Answer <code>y</code> or <code>n</code> in the window or the terminal. A saved profile is <code>~/.config/gesture-media/profile.yaml</code>. The next run uses it. Flags such as <code>--camera</code> and <code>--no-calibration</code> still win over the file.</p>
+    <p>Order of settings, from weakest to strongest: built-in defaults, then <code>config.yaml</code>, then the profile, then the command you typed.</p>
+
+    <h2 id="record">Record a session and play it back</h2>
+    <p>Recording stores poses and landmark coordinates. It does not store pictures.</p>
+    <pre class="command">gesture-media record --out run.jsonl
+gesture-media replay run.jsonl</pre>
+    <p>Replay runs the recording through the gesture logic and a fake player, then prints the actions. Your real volume and your real player stay where they are. Use it when you want to see what a session would have done.</p>
+    <p><code>--verbose</code> on a normal run prints a debug line per frame. Frames are still not written anywhere.</p>
+
+    <h2 id="trouble">Fix what you see</h2>
+    <table>
+      <thead>
+        <tr><th>What happened</th><th>What to do</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="fail">The camera will not open</td><td>Quit anything else using the webcam. Run <code>gesture-media list-cameras</code>, then <code>gesture-media run --camera N</code>. A failed open exits with code 2.</td></tr>
+        <tr><td class="fail">The music ignores you</td><td>Start a player and check <code>playerctl -l</code>, or run with <code>--player mpv --media file</code>.</td></tr>
+        <tr><td class="fail">The preview is a blank window</td><td><code>QT_QPA_PLATFORM=xcb gesture-media run</code></td></tr>
+        <tr><td class="fail">Pitch does nothing</td><td>VLC and Spotify cannot do it. Use <code>--player mpv</code>.</td></tr>
+        <tr><td class="fail">The pose flickers or never settles</td><td>Put more light on the hand, or raise <code>vision.min_score</code> and <code>engine.stable_ms</code> in <code>config.yaml</code>. Calibrate in the chair you actually use.</td></tr>
+        <tr><td>The camera light stays on after two fists</td><td>That is the paused state. Quit, or set <code>release_camera_when_paused</code>.</td></tr>
+      </tbody>
+    </table>
+    <p>Day to day, the whole loop is: start the music, run <code>gesture-media run</code>, hold the pose until the notification agrees with you, quit when you are done.</p>
+  <footer>Settings you will edit live in <code>config.yaml</code> beside this file. Hold times, the deadzone, the camera index, and the command that opens a player are all there.</footer>
+  </main>
+  </div>
+  </div>
+
+  <script>
+    const poses = {
+      fist: ["#pose-fist", "Closed fist", "Play or pause", "Hold for a third of a second"],
+      palm: ["#pose-palm", "Open palm", "Mute or unmute", "Hold still"],
+      up: ["#pose-up", "Thumb up", "Volume up", "Right is next"],
+      down: ["#pose-down", "Thumb down", "Volume down", "Left is previous"],
+      point: ["#pose-point", "One finger", "Seek", "Right is forward"],
+      two: ["#pose-two", "Both fists", "Pause detection", "Hold for a second and a half"]
+    };
+    const hand = document.getElementById("pose-hand");
+    const caption = document.getElementById("pose-caption");
+    const effect = document.getElementById("pose-effect");
+    document.querySelectorAll(".pose-list button").forEach((button) => {
+      button.addEventListener("click", () => {
+        const [href, title, result, hint] = poses[button.dataset.pose];
+        hand.setAttribute("href", href);
+        caption.textContent = title;
+        effect.textContent = result;
+        document.getElementById("hud-title").textContent = title;
+        document.getElementById("hud-hint").textContent = hint;
+        document.querySelectorAll(".pose-list button").forEach((other) => {
+          other.setAttribute("aria-pressed", other === button ? "true" : "false");
+        });
+        const stage = document.querySelector(".stage");
+        if (window.matchMedia("(max-width: 800px)").matches && stage) {
+          stage.scrollIntoView({ block: "nearest" });
+        }
+      });
+    });
+  </script>
+</body>
+</html>

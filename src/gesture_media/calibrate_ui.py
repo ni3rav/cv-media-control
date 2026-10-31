@@ -21,8 +21,6 @@ _GESTURES = (
     "Thumb_Up",
     "Thumb_Down",
     "Pointing_Up",
-    "Victory",
-    "ILoveYou",
 )
 
 

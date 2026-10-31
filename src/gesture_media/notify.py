@@ -22,9 +22,13 @@ _GESTURE_LABELS = {
     "Closed_Fist": "Fist",
     "Thumb_Up": "Thumb up",
     "Thumb_Down": "Thumb down",
+    "Thumb_Right": "Thumb right",
+    "Thumb_Left": "Thumb left",
     "Pointing_Up": "Pointing up",
-    "Victory": "Victory",
-    "ILoveYou": "ILoveYou",
+    "Victory": "Peace sign",
+    "ILoveYou": "I love you",
+    "swipe_right": "Swipe right",
+    "swipe_left": "Swipe left",
     "two_fists": "two fists",
 }
 _IMPORTANT = frozenset({"app_on", "app_off", "pause", "resume", "error"})

@@ -53,8 +53,8 @@ def test_status_lines_include_the_readout() -> None:
     assert "fps: 24.5" in lines
     assert "volume: 40%" in lines
     assert "mute: muted" in lines
-    assert "pitch: -1.5 st" in lines
     assert "backend: mpris" in lines
+    assert all(not line.startswith("pitch:") for line in lines)
     assert "pitch unsupported on this backend" in lines
     assert "player lost" in lines
     assert "calibrated profile active" in lines

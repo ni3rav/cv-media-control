@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -49,6 +50,19 @@ def _add_run_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--no-preview", action="store_true")
     parser.add_argument("--no-calibration", action="store_true")
     parser.add_argument("--verbose", action="store_true")
+
+
+def prepare_preview_platform() -> None:
+    """OpenCV's Qt build has no Wayland plugin. Use XWayland unless overridden."""
+    if os.environ.get("QT_QPA_PLATFORM"):
+        return
+    if not os.environ.get("WAYLAND_DISPLAY"):
+        return
+    os.environ["QT_QPA_PLATFORM"] = "xcb"
+    fonts = Path("/usr/share/fonts")
+    if fonts.is_dir():
+        os.environ.setdefault("QT_QPA_FONTDIR", str(fonts))
+    logging.getLogger(__name__).info("preview using QT_QPA_PLATFORM=xcb")
 
 
 def configure_logging(verbose: bool) -> None:
@@ -121,6 +135,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     configure_logging(bool(getattr(args, "verbose", False)))
+    prepare_preview_platform()
     try:
         if args.command == "doctor":
             from gesture_media.doctor import run_doctor

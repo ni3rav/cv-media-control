@@ -188,7 +188,7 @@ def test_live_and_final_combinations():
         assert bool(live_planned) is expect_live
         assert bool(final_planned) is expect_final
         if expect_live:
-            assert live_planned[0].body == "Pitch +2.5 semitones (ILoveYou)"
+            assert live_planned[0].body == "Pitch +2.5 semitones (I love you)"
             assert live_planned[0].expire_ms == 1500
         if expect_final:
             assert final_planned[0].body == "Pitch set to +2.5 semitones"

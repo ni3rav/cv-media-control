@@ -13,6 +13,10 @@ from gesture_media.config import AppConfig, GestureSpec
 from gesture_media.engine_api import ContinuousEngagement, StepResult
 from gesture_media.vision.types import Observation, palm_center
 
+_THUMB_BASE = 2
+_THUMB_TIP = 4
+_THUMB_MIN = 0.06
+
 _CONTINUOUS_ACTIONS = frozenset({"volume", "seek", "pitch"})
 _KIND = {
     "play_pause": Kind.PLAY_PAUSE,
@@ -25,6 +29,38 @@ _KIND = {
     "open_player": Kind.OPEN_PLAYER,
     "pitch_reset": Kind.PITCH_RESET,
 }
+# A horizontal sweep has to be obvious, and it has to finish before a still hold.
+_SWIPE_MIN_DISP = 0.18
+_SWIPE_MAX_MS = 500
+_SWIPE_DOMINANCE = 1.5
+
+
+def thumb_aim(hand: Observation) -> str | None:
+    """Image direction of an extended thumb. Right and left change the track.
+
+    The camera frame is mirrored, so the user's right is increasing ``x``.
+    Image ``y`` grows downward. A tiny vector keeps the classifier label.
+    """
+    if hand.gesture not in {"Thumb_Up", "Thumb_Down"}:
+        return None
+    if len(hand.landmarks) <= _THUMB_TIP:
+        return None
+    base = hand.landmarks[_THUMB_BASE]
+    tip = hand.landmarks[_THUMB_TIP]
+    dx = tip.x - base.x
+    dy = tip.y - base.y
+    if max(abs(dx), abs(dy)) < _THUMB_MIN:
+        return None
+    if abs(dx) > abs(dy):
+        return "Thumb_Right" if dx > 0 else "Thumb_Left"
+    return "Thumb_Up" if dy < 0 else "Thumb_Down"
+
+
+def _with_thumb_aim(hand: Observation) -> Observation:
+    label = thumb_aim(hand)
+    if label is None or label == hand.gesture:
+        return hand
+    return Observation(label, hand.score, hand.handedness, hand.landmarks, hand.t_ms)
 
 
 @dataclass(slots=True)
@@ -41,6 +77,8 @@ class _Engagement:
     absolute: float | None
     still_blocked: bool
     still_fired: bool
+    motion: str
+    motion_rate: float
 
 
 class GestureEngine:
@@ -76,6 +114,8 @@ class GestureEngine:
         self._two_gap: int | None = None
         self._two_locked = False
         self._two_score: float | None = None
+        self._swipe_origin: tuple[int, float, float] | None = None
+        self._swipe_label: str | None = None
 
     @property
     def paused(self) -> bool:
@@ -132,6 +172,8 @@ class GestureEngine:
             return self._result(t_ms)
 
         primary = self._select_primary(qualified)
+        if primary is not None:
+            primary = _with_thumb_aim(primary)
         if primary is None or primary.gesture not in self._gestures:
             self._single(None, None, None, t_ms, allow_emit=True)
             return self._result(t_ms)
@@ -249,10 +291,23 @@ class GestureEngine:
         ):
             self._candidate = None
             self._candidate_since = None
+            self._swipe_origin = None
+            self._swipe_label = None
             return
         if self._candidate != label or self._candidate_since is None:
             self._candidate = label
             self._candidate_since = t
+            self._swipe_origin = (t, palm[0], palm[1])
+            self._swipe_label = label
+            return
+        if self._swipe(label, palm, t, arm=False):
+            spec = self._gestures[label]
+            if spec.cooldown_ms:
+                self._cooldowns[label] = t + spec.cooldown_ms
+            self._candidate = None
+            self._candidate_since = None
+            self._swipe_origin = None
+            self._swipe_label = None
             return
         if t - self._candidate_since >= self._config.engine.stable_ms:
             self._activate(label, score, palm, t)
@@ -287,6 +342,8 @@ class GestureEngine:
             absolute=self._pitch if kind is Kind.PITCH else None,
             still_blocked=False,
             still_fired=False,
+            motion=spec.action,
+            motion_rate=spec.max_rate or 0.0,
         )
 
     def _release(self, t: int) -> None:
@@ -303,6 +360,41 @@ class GestureEngine:
         self._active_since = None
         self._fired = False
         self._grace_from = None
+        self._swipe_origin = None
+        self._swipe_label = None
+
+    def _swipe(
+        self,
+        label: str,
+        palm: tuple[float, float],
+        t: int,
+        *,
+        arm: bool,
+    ) -> bool:
+        """Horizontal sweep. Right is next, left is previous. The picture is mirrored."""
+        spec = self._gestures.get(label)
+        if spec is None or spec.swipe != "horizontal" or self._fired:
+            return False
+        origin = self._swipe_origin
+        if origin is None or self._swipe_label != label:
+            self._swipe_origin = (t, palm[0], palm[1])
+            self._swipe_label = label
+            return False
+        started, x0, y0 = origin
+        if t - started > _SWIPE_MAX_MS:
+            self._swipe_origin = (t, palm[0], palm[1])
+            return False
+        dx = palm[0] - x0
+        dy = palm[1] - y0
+        if abs(dx) < _SWIPE_MIN_DISP or abs(dx) < abs(dy) * _SWIPE_DOMINANCE:
+            return False
+        right = dx > 0
+        self._actions.append(
+            Action(Kind.NEXT if right else Kind.PREVIOUS, "swipe_right" if right else "swipe_left")
+        )
+        if arm:
+            self._fired = True
+        return True
 
     def _drive_active(
         self,
@@ -317,8 +409,16 @@ class GestureEngine:
         spec = self._gestures[self._active]
         if spec.action in _CONTINUOUS_ACTIONS:
             self._drive_continuous(spec, palm, t, matching=matching, allow_emit=allow_emit)
-        else:
-            self._drive_discrete(spec, t, allow_emit=allow_emit)
+            return
+        if (
+            matching
+            and palm is not None
+            and allow_emit
+            and self._active is not None
+            and self._swipe(self._active, palm, t, arm=True)
+        ):
+            return
+        self._drive_discrete(spec, t, allow_emit=allow_emit)
 
     def _drive_discrete(self, spec: GestureSpec, t: int, *, allow_emit: bool) -> None:
         if (
@@ -345,8 +445,16 @@ class GestureEngine:
         eng = self._engagement
         if eng is None:
             return
+        if spec.direction is not None and spec.action == "volume":
+            self._emit_directed(spec, eng, t, allow_emit=allow_emit and matching)
+            return
         if matching and palm is not None:
-            raw = self._displacement(spec.action, eng, palm)
+            action, raw, rate_limit = self._motion(spec, eng, palm)
+            if eng.motion != action:
+                eng.smoothed = 0.0
+                eng.motion = action
+                eng.kind = _KIND[action]
+                eng.motion_rate = rate_limit
             alpha = self._config.engine.smoothing_alpha
             eng.smoothed = alpha * raw + (1.0 - alpha) * eng.smoothed
             if abs(eng.smoothed) > self._config.engine.deadzone:
@@ -372,15 +480,45 @@ class GestureEngine:
         # A missing or mismatched sample must not keep integrating the last offset.
         if not matching or not allow_emit or spec.max_rate is None:
             return
-        rate = self._rate(eng.smoothed, spec.max_rate)
+        rate = self._rate(eng.smoothed, eng.motion_rate)
         if rate == 0.0:
             return
-        self._emit_rate(spec, eng, rate, elapsed_s)
+        self._emit_rate(eng.motion, eng, rate, elapsed_s)
 
-    def _displacement(self, action: str, eng: _Engagement, palm: tuple[float, float]) -> float:
-        if action == "seek":
-            return palm[0] - eng.anchor_x
-        return eng.anchor_y - palm[1]
+    def _emit_directed(
+        self,
+        spec: GestureSpec,
+        eng: _Engagement,
+        t: int,
+        *,
+        allow_emit: bool,
+    ) -> None:
+        tick_ms = self._config.engine.tick_ms
+        if t - eng.last_tick_ms < tick_ms:
+            return
+        elapsed_s = (t - eng.last_tick_ms) / 1000.0
+        eng.last_tick_ms = t
+        if not allow_emit or spec.max_rate is None or spec.direction is None:
+            return
+        delta = spec.direction * spec.max_rate * elapsed_s
+        self._actions.append(Action(Kind.VOLUME, eng.gesture, delta))
+        eng.accumulated += delta
+        eng.changed = True
+
+    def _motion(
+        self,
+        spec: GestureSpec,
+        eng: _Engagement,
+        palm: tuple[float, float],
+    ) -> tuple[str, float, float]:
+        dx = palm[0] - eng.anchor_x
+        dy = eng.anchor_y - palm[1]
+        if spec.alt_action is None or spec.alt_max_rate is None:
+            raw = dx if spec.action == "seek" else dy
+            return spec.action, raw, spec.max_rate or 0.0
+        if abs(dx) >= abs(dy):
+            return spec.action, dx, spec.max_rate or 0.0
+        return spec.alt_action, dy, spec.alt_max_rate
 
     def _rate(self, smoothed: float, max_rate: float) -> float:
         deadzone = self._config.engine.deadzone
@@ -409,23 +547,23 @@ class GestureEngine:
 
     def _emit_rate(
         self,
-        spec: GestureSpec,
+        action: str,
         eng: _Engagement,
         rate: float,
         elapsed_s: float,
     ) -> None:
         delta = rate * elapsed_s
-        if spec.action == "volume":
+        if action == "volume":
             self._actions.append(Action(Kind.VOLUME, eng.gesture, delta))
             eng.accumulated += delta
             eng.changed = True
             return
-        if spec.action == "seek":
+        if action == "seek":
             self._actions.append(Action(Kind.SEEK, eng.gesture, delta))
             eng.accumulated += delta
             eng.changed = True
             return
-        if spec.action != "pitch":
+        if action != "pitch":
             return
         limits = self._config.pitch
         self._pitch_raw = min(

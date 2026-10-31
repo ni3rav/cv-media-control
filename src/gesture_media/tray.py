@@ -38,7 +38,10 @@ def draw_icon(state: str):
 
 
 def tooltip(state: str, backend_name: str) -> str:
-    return f"Gesture Media Controller — {state} ({backend_name})"
+    # AppIndicator encodes the title as latin-1. An em dash here stops the tray
+    # from starting at all.
+    text = f"Gesture Media Controller: {state} ({backend_name})"
+    return text.encode("latin-1", "replace").decode("latin-1")
 
 
 @dataclass

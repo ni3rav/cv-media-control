@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 from types import SimpleNamespace
 
-from gesture_media.players.audio_wpctl import WpctlAudio
+from gesture_media.players.audio_wpctl import WpctlAudio, playback_stream_ids
 from gesture_media.players.base import Capability
 from gesture_media.players.mpris import MprisPlayer
 from gesture_media.players.registry import build_backends
@@ -134,11 +134,44 @@ def test_wpctl_commands_and_timeout(monkeypatch):
     audio.toggle_mute()
     assert audio.get_state() == (45.0, True)
     assert seen == [
+        (["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"], 1.0),
+        (["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "0"], 1.0),
+        (["wpctl", "status"], 1.0),
         (["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+", "-l", "1.0"], 1.0),
         (["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "3%-", "-l", "1.0"], 1.0),
-        (["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"], 1.0),
+        (["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"], 1.0),
+        (["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "0"], 1.0),
+        (["wpctl", "status"], 1.0),
         (["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"], 1.0),
     ]
+
+
+def test_unmute_clears_a_muted_playback_stream(monkeypatch):
+    status = """
+Audio
+ └─ Streams:
+       107. Firefox
+             92. output_FL       > Speaker:playback_FL	[active]
+Video
+"""
+    seen: list[list[str]] = []
+
+    def responder(argv, kwargs):
+        seen.append(argv)
+        if argv[1] == "status":
+            return _completed(argv, stdout=status)
+        if argv[1:] == ["get-volume", "@DEFAULT_AUDIO_SINK@"]:
+            return _completed(argv, stdout="Volume: 0.40\n")
+        if argv[1:] == ["get-volume", "107"]:
+            return _completed(argv, stdout="Volume: 1.00 [MUTED]\n")
+        return _completed(argv)
+
+    _patch_run(monkeypatch, "gesture_media.players.audio_wpctl", responder)
+    audio = WpctlAudio()
+    audio.toggle_mute()
+    assert ["wpctl", "set-mute", "107", "0"] in seen
+    assert ["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "1"] not in seen
+    assert playback_stream_ids(status) == ["107"]
 
 
 def test_wpctl_plain_volume_and_failures(monkeypatch):
@@ -282,3 +315,28 @@ def test_failed_mpv_does_not_crash_the_registry(monkeypatch):
     assert player.is_available() is False
     assert isinstance(audio, WpctlAudio)
     player.play_pause()
+
+
+def test_best_mpris_player_prefers_one_that_is_playing(monkeypatch):
+    from gesture_media.players.registry import best_mpris_player
+
+    def fake_run(argv, **kwargs):
+        assert kwargs["timeout"] == 1.0
+        if argv == ["playerctl", "-l"]:
+            return _completed(argv, stdout="brave.instance\nspotify\n")
+        if argv == ["playerctl", "-p", "brave.instance", "status"]:
+            return _completed(argv, stdout="Stopped\n")
+        if argv == ["playerctl", "-p", "spotify", "status"]:
+            return _completed(argv, stdout="Playing\n")
+        raise AssertionError(argv)
+
+    monkeypatch.setattr("gesture_media.players.registry.subprocess.run", fake_run)
+    assert best_mpris_player() == "spotify"
+
+
+def test_tray_tooltip_is_latin1():
+    from gesture_media.tray import tooltip
+
+    text = tooltip("active", "mpris")
+    text.encode("latin-1")
+    assert "—" not in text
