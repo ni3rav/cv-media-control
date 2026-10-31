@@ -1,0 +1,74 @@
+# Gesture Media Controller
+# Precedence, lowest to highest: built-in defaults, this file,
+# the calibration profile, then CLI flags.
+# audio.volume_target is omitted so the implicit default stays in force:
+# player volume for mpv, system volume for every other backend.
+
+camera:
+  index: 0
+  width: 640
+  height: 480
+  fps: 30
+
+vision:
+  classifier: mediapipe   # mediapipe | rules
+  min_score: 0.6
+  hand: any               # any | left | right
+  zone: {x_min: 0.15, x_max: 0.85, y_min: 0.10, y_max: 0.90}
+
+engine:
+  stable_ms: 150          # a label must hold this long before it becomes active
+  grace_ms: 200           # brief loss or flicker does not count as release
+  tick_ms: 100            # continuous gestures emit on this cadence
+  deadzone: 0.05
+  max_disp: 0.25
+  smoothing_alpha: 0.4
+
+gestures:
+  Open_Palm:   {action: play_pause, hold_ms: 500, cooldown_ms: 1000}
+  Closed_Fist: {action: mute, hold_ms: 500, cooldown_ms: 1000}
+  Thumb_Up:    {action: next, hold_ms: 400, cooldown_ms: 1000}
+  Thumb_Down:  {action: previous, hold_ms: 400, cooldown_ms: 1000}
+  Pointing_Up: {action: volume, max_rate: 30, still_action: open_player, still_ms: 1500}
+  Victory:     {action: seek, max_rate: 20}
+  ILoveYou:    {action: pitch, max_rate: 4, still_action: pitch_reset, still_ms: 1500}
+
+player:
+  backend: auto           # auto | mpv | mpris
+  mpris_player: null
+  open_command: [vlc]
+  media: []
+
+pitch:
+  min_semitones: -12
+  max_semitones: 12
+  step: 0.5
+
+hud:
+  enabled: true
+  show_landmarks: false
+
+tray:
+  enabled: true
+  release_camera_when_paused: false
+
+pause:
+  gesture: two_fists      # both hands Closed_Fist
+  hold_ms: 2000
+  paused_fps: 5
+
+notifications:
+  enabled: true
+  verbosity: all          # all | important | off
+  update_hz: 5
+  expire_discrete_ms: 3000
+  expire_continuous_ms: 1500
+  live_updates: true      # in-place updates while a continuous gesture is held
+  final_value: true       # one result notification when that gesture ends
+  on_start: true
+  on_toggle: true
+  on_error: true
+  per_action:
+    volume: true
+    seek: true
+    pitch: true
