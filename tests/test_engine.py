@@ -390,6 +390,64 @@ def test_sideways_thumb_changes_track(gesture: str) -> None:
     assert kinds(feed(left, gesture, 0.5, 0.5, range(0, 801, 50), aim="left")) == [Kind.PREVIOUS]
 
 
+def _pose(gesture: str, points: dict[int, tuple[float, float]], score: float = 0.95) -> Observation:
+    landmarks = [Landmark(0.5, 0.5, 0.0) for _ in range(21)]
+    for index, (x, y) in points.items():
+        landmarks[index] = Landmark(x, y, 0.0)
+    return Observation(gesture, score, "Right", tuple(landmarks), 0)
+
+
+def _hitchhike(
+    direction: str,
+    gesture: str,
+    *,
+    tucked: bool = False,
+    score: float = 0.95,
+) -> Observation:
+    """Curled fingers. An extended thumb aims at the mirrored image edge."""
+    points = {
+        0: (0.50, 0.72),
+        2: (0.36, 0.58),
+        5: (0.42, 0.50),
+        6: (0.42, 0.46),
+        8: (0.46, 0.66),
+        9: (0.50, 0.46),
+        10: (0.50, 0.42),
+        12: (0.52, 0.64),
+        13: (0.58, 0.48),
+        14: (0.58, 0.44),
+        16: (0.56, 0.66),
+        17: (0.64, 0.52),
+        18: (0.64, 0.48),
+        20: (0.60, 0.66),
+    }
+    points[4] = (0.44, 0.54) if tucked else ((0.78, 0.58) if direction == "right" else (0.08, 0.58))
+    return _pose(gesture, points, score)
+
+
+def test_sideways_thumb_counts_when_the_classifier_has_no_label() -> None:
+    right = GestureEngine(default_config())
+    left = GestureEngine(default_config())
+    right_kinds = []
+    left_kinds = []
+    for t in range(0, 801, 50):
+        right_hand = _hitchhike("right", "None", score=0.2)
+        left_hand = _hitchhike("left", "None", score=0.2)
+        right_kinds.extend(action.kind for action in right.step((right_hand,), t).actions)
+        left_kinds.extend(action.kind for action in left.step((left_hand,), t).actions)
+    assert right_kinds == [Kind.NEXT]
+    assert left_kinds == [Kind.PREVIOUS]
+
+
+def test_tucked_thumb_stays_play_pause() -> None:
+    engine = GestureEngine(default_config())
+    seen = []
+    hand = _hitchhike("right", "Closed_Fist", tucked=True)
+    for t in range(0, 801, 50):
+        seen.extend(action.kind for action in engine.step((hand,), t).actions)
+    assert seen == [Kind.PLAY_PAUSE]
+
+
 def _delta(gesture: str, x: float, y: float) -> float | None:
     engine = with_alpha(1.0)
     engine.step((make_hand(gesture, 0.5, 0.5),), 0)

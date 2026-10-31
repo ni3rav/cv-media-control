@@ -16,6 +16,10 @@ from gesture_media.vision.types import Observation, palm_center
 _THUMB_BASE = 2
 _THUMB_TIP = 4
 _THUMB_MIN = 0.06
+# Index, middle, ring, pinky: knuckle, middle joint, tip.
+_CURL_FINGERS = ((5, 6, 8), (9, 10, 12), (13, 14, 16), (17, 18, 20))
+_INDEX_MCP = 5
+_PINKY_MCP = 17
 
 _CONTINUOUS_ACTIONS = frozenset({"volume", "seek", "pitch"})
 _KIND = {
@@ -35,32 +39,69 @@ _SWIPE_MAX_MS = 500
 _SWIPE_DOMINANCE = 1.5
 
 
+def _span(a, b) -> float:
+    dx = a.x - b.x
+    dy = a.y - b.y
+    return (dx * dx + dy * dy) ** 0.5
+
+
+def _hitchhike(landmarks: tuple) -> bool:
+    """Other fingers curled and the thumb extended clear of the palm.
+
+    MediaPipe has no sideways-thumb class. That pose is usually ``None`` or a
+    fist, so the track change has to come from the landmarks.
+    """
+    if len(landmarks) <= 20:
+        return False
+    wrist = landmarks[0]
+    palm = _span(landmarks[_INDEX_MCP], landmarks[_PINKY_MCP])
+    if palm < 1e-4:
+        return False
+    for _mcp, pip, tip in _CURL_FINGERS:
+        if _span(landmarks[tip], wrist) >= _span(landmarks[pip], wrist):
+            return False
+    bone = _span(landmarks[_THUMB_TIP], landmarks[_THUMB_BASE])
+    clearance = _span(landmarks[_THUMB_TIP], landmarks[_INDEX_MCP])
+    return bone > palm * 0.35 and clearance > palm * 0.8
+
+
+def _thumb_delta(landmarks: tuple) -> tuple[float, float] | None:
+    if len(landmarks) <= _THUMB_TIP:
+        return None
+    base = landmarks[_THUMB_BASE]
+    tip = landmarks[_THUMB_TIP]
+    return tip.x - base.x, tip.y - base.y
+
+
 def thumb_aim(hand: Observation) -> str | None:
     """Image direction of an extended thumb. Right and left change the track.
 
     The camera frame is mirrored, so the user's right is increasing ``x``.
     Image ``y`` grows downward. A tiny vector keeps the classifier label.
+    A thumb stuck out to the side counts even when the classifier says ``None``.
     """
-    if hand.gesture not in {"Thumb_Up", "Thumb_Down"}:
+    delta = _thumb_delta(hand.landmarks)
+    if delta is None:
         return None
-    if len(hand.landmarks) <= _THUMB_TIP:
-        return None
-    base = hand.landmarks[_THUMB_BASE]
-    tip = hand.landmarks[_THUMB_TIP]
-    dx = tip.x - base.x
-    dy = tip.y - base.y
+    dx, dy = delta
     if max(abs(dx), abs(dy)) < _THUMB_MIN:
         return None
-    if abs(dx) > abs(dy):
+    sideways = abs(dx) >= abs(dy)
+    if sideways and (_hitchhike(hand.landmarks) or hand.gesture in {"Thumb_Up", "Thumb_Down"}):
         return "Thumb_Right" if dx > 0 else "Thumb_Left"
+    if hand.gesture not in {"Thumb_Up", "Thumb_Down"}:
+        return None
     return "Thumb_Up" if dy < 0 else "Thumb_Down"
 
 
-def _with_thumb_aim(hand: Observation) -> Observation:
+def _with_thumb_aim(hand: Observation, min_score: float) -> Observation:
     label = thumb_aim(hand)
     if label is None or label == hand.gesture:
         return hand
-    return Observation(label, hand.score, hand.handedness, hand.landmarks, hand.t_ms)
+    score = hand.score
+    if label in {"Thumb_Left", "Thumb_Right"} and hand.gesture not in {"Thumb_Up", "Thumb_Down"}:
+        score = max(score, min_score)
+    return Observation(label, score, hand.handedness, hand.landmarks, hand.t_ms)
 
 
 @dataclass(slots=True)
@@ -149,7 +190,10 @@ class GestureEngine:
         self._pause_toggled = False
 
         if self._detection_enabled:
-            qualified = [hand for hand in hands if self._qualifies(hand)]
+            labeled = tuple(
+                _with_thumb_aim(hand, self._config.vision.min_score) for hand in hands
+            )
+            qualified = [hand for hand in labeled if self._qualifies(hand)]
         else:
             qualified = []
         fists = [hand for hand in qualified if hand.gesture == "Closed_Fist"]
@@ -172,8 +216,6 @@ class GestureEngine:
             return self._result(t_ms)
 
         primary = self._select_primary(qualified)
-        if primary is not None:
-            primary = _with_thumb_aim(primary)
         if primary is None or primary.gesture not in self._gestures:
             self._single(None, None, None, t_ms, allow_emit=True)
             return self._result(t_ms)

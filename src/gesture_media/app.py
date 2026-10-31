@@ -576,6 +576,10 @@ def _hooks(session: _Session):
 
 
 def _handle_key(session: _Session, key: int) -> None:
+    # 3 is Ctrl-C when the preview window has focus and the terminal does not.
+    if key == 3:
+        _arm_forced_exit(session.control.stop, 130)
+        return
     if key in (ord("q"), 27):
         session.control.stop.set()
     elif key == ord("d") and session.engine is not None:
@@ -642,15 +646,72 @@ def _watch_backend(session: _Session) -> None:
             return
 
 
+_FORCED_EXIT_S = 1.0
+_signals_armed = False
+_forced_exit_armed = False
+_forced_exit_lock = threading.Lock()
+
+
+def _arm_forced_exit(stop: threading.Event, code: int = 130) -> None:
+    """Ask the loop to stop, then die even if a library call never returns.
+
+    The first request leaves a short window so the camera and player can close.
+    Another one exits immediately. ``os._exit`` is required because a Python
+    signal handler does not run while the main thread is inside OpenCV, the
+    tray, or MediaPipe, and a non-daemon tray thread keeps the process alive
+    after ``KeyboardInterrupt``.
+    """
+    global _forced_exit_armed
+
+    stop.set()
+    with _forced_exit_lock:
+        if _forced_exit_armed:
+            os._exit(code)
+        _forced_exit_armed = True
+    timer = threading.Timer(_FORCED_EXIT_S, lambda: os._exit(code))
+    timer.daemon = True
+    timer.start()
+
+
 def _install_signals(stop: threading.Event) -> None:
+    """Make Ctrl-C and SIGTERM stop the process.
+
+    SIGINT is blocked and taken with ``sigwait`` on a side thread. That thread
+    is not stuck in the camera loop, so Ctrl-C still lands while a frame is
+    being recognized. The disposition stays at the default so a library that
+    unblocks the signal kills the process instead of ignoring it.
+    """
     import signal
 
-    def _handle(signum, _frame) -> None:
-        log.info("received signal %s", signum)
-        stop.set()
+    global _signals_armed
 
-    signal.signal(signal.SIGTERM, _handle)
-    signal.signal(signal.SIGINT, _handle)
+    watched = {signal.SIGINT, signal.SIGTERM}
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
+    signal.signal(signal.SIGTERM, signal.SIG_DFL)
+    if _signals_armed:
+        return
+    _signals_armed = True
+    signal.pthread_sigmask(signal.SIG_BLOCK, watched)
+
+    def _wait() -> None:
+        sigterm_hits = 0
+        while True:
+            try:
+                signum = signal.sigwait(watched)
+            except Exception:
+                log.exception("signal wait failed")
+                signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGINT})
+                return
+            log.info("received signal %s", signum)
+            if signum == signal.SIGINT:
+                _arm_forced_exit(stop, 130)
+                continue
+            sigterm_hits += 1
+            stop.set()
+            if sigterm_hits >= 2:
+                os._exit(143)
+
+    threading.Thread(target=_wait, name="signal-wait", daemon=True).start()
 
 
 def run(config, *, config_path: Path | None = None, record_path: Path | None = None) -> int:
@@ -718,6 +779,7 @@ def _loop(session: _Session, bgr_to_rgb, mirror_bgr, frame_to_json) -> None:
     fps_mark = started
     fps_frames = 0
     while not session.control.stop.is_set():
+        _install_signals(session.control.stop)
         _apply_control(session)
         if session.control.stop.is_set():
             break

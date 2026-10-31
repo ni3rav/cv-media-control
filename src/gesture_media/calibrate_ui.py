@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import select
 import sys
+import threading
 import time
 
 log = logging.getLogger(__name__)
@@ -47,6 +48,9 @@ def run_calibration(
     except ImportError as exc:
         print(f"calibrate needs the camera source ({exc}).", file=sys.stderr)
         return 1
+    from gesture_media.app import _install_signals
+
+    _install_signals(threading.Event())
     active = _with_camera(config, camera)
     try:
         source = open_source(active)
@@ -296,7 +300,7 @@ def _confirm(preview: bool) -> bool:
         key = cv2.waitKey(50) & 0xFF
         if key in (ord("y"), ord("Y")):
             return True
-        if key in (ord("n"), ord("N"), 27):
+        if key in (ord("n"), ord("N"), 27, 3):
             return False
         line = _stdin_line()
         if line == "y":
@@ -388,7 +392,7 @@ def _preview_cancel() -> bool:
     import cv2
 
     key = cv2.waitKey(1) & 0xFF
-    return key == 27
+    return key in (27, 3)
 
 
 def _notify(config, detail: str) -> None:
